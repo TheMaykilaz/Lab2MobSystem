@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.example.myapplication.helpers
 
 import java.util.UUID
 

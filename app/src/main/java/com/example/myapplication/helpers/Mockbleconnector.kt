@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.example.myapplication.helpers
 
 import android.util.Log
 import kotlinx.coroutines.delay
