@@ -45,10 +45,10 @@ class SmartActuator(private val context: Context) {
     }
 
     /** "Сирена": короткий вібровідгук, що імітує тривогу. */
-    /** "Сирена": короткий вібровідгук, що імітує тривогу. */
     fun triggerAlarm() {
+        Log.i("SmartActuator", "[АКТУАТОР] Сирена (вібрація) активована: час вийшов, руки помиті!")
         if (!hasVibrator || vibrator == null) {
-            Log.w("SmartActuator", "Вібратор недоступний на цьому пристрої")
+            Log.w("SmartActuator", "Фізичний вібратор відсутній (емулюється в логах)")
             return
         }
         val pattern = longArrayOf(0, 200, 100, 200, 100, 400)
@@ -58,19 +58,18 @@ class SmartActuator(private val context: Context) {
             @Suppress("DEPRECATION")
             vibrator.vibrate(pattern, -1)
         }
-        Log.i("SmartActuator", "Сирена (вібрація) активована")
     }
 
     /** "Прожектор": увімкнути/вимкнути ліхтарик. */
     fun toggleFlashlight(on: Boolean) {
+        Log.i("SmartActuator", "[АКТУАТОР] Ліхтарик: ${if (on) "УВІМКНЕНО (час вийшов, руки помиті)" else "вимкнено"}")
         val id = torchCameraId
         if (!hasFlash || cameraManager == null || id == null) {
-            Log.w("SmartActuator", "Ліхтарик недоступний на цьому пристрої")
+            Log.w("SmartActuator", "Фізичний спалах/ліхтарик відсутній (емулюється в логах)")
             return
         }
         try {
             cameraManager.setTorchMode(id, on)
-            Log.i("SmartActuator", "Ліхтарик: ${if (on) "УВІМКНЕНО" else "вимкнено"}")
         } catch (e: Exception) {
             Log.e("SmartActuator", "Не вдалось керувати ліхтариком: ${e.message}")
         }

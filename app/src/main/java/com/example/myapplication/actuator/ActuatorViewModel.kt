@@ -1,11 +1,15 @@
 package com.example.myapplication.actuator
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.helpers.MockCloudControl
 import com.example.myapplication.helpers.SensorReader
 import com.example.myapplication.helpers.SmartActuator
+import com.example.myapplication.wash.WashAction
+import com.example.myapplication.wash.WashPhase
+import com.example.myapplication.wash.WashViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -31,6 +35,33 @@ class ActuatorViewModel(app: Application) : AndroidViewModel(app) {
 
     private var sensorJob: Job? = null
     private var pollJob: Job? = null
+    private var lastHandledCommandId = 0L
+
+    private var washViewModel: WashViewModel? = null
+    private var washObserveJob: Job? = null
+
+    /** Підключення WashViewModel для взаємодії між модулями (дистанційний запуск і слухання стану). */
+    fun attachWashViewModel(vm: WashViewModel) {
+        washViewModel = vm
+        if (washObserveJob != null) return
+        washObserveJob = viewModelScope.launch {
+            var previousPhase = vm.state.value.phase
+            vm.state.collect { washState ->
+                val currentPhase = washState.phase
+                _state.update { it.copy(washPhase = currentPhase) }
+
+                // Коли таймер завершується (WashPhase.DONE) — ActuatorViewModel, який слухає стан WashViewModel,
+                // автоматично вмикає вібрацію й ліхтарик ("час вийшов, руки помиті") і пише в Logcat.
+                if (previousPhase == WashPhase.WASHING && currentPhase == WashPhase.DONE) {
+                    onWashCompleted()
+                } else if (previousPhase == WashPhase.DONE && currentPhase == WashPhase.IDLE) {
+                    _state.update { it.copy(remoteLedOn = false) }
+                    applyFlashlightHardware()
+                }
+                previousPhase = currentPhase
+            }
+        }
+    }
 
     /** ЄДИНИЙ вхід у ViewModel — всі дії приходять сюди. */
     fun onAction(action: ActuatorAction) {
@@ -43,8 +74,11 @@ class ActuatorViewModel(app: Application) : AndroidViewModel(app) {
             }
             ActuatorAction.ManualAlarmTrigger -> actuator.triggerAlarm()
             ActuatorAction.SimulateCloudToggle -> viewModelScope.launch {
-                val newValue = !_state.value.remoteLedOn
-                MockCloudControl.setRemoteCommand(newValue) // імітація запису в хмару ("консоль")
+                Log.i("ActuatorViewModel", "Натиснуто «Імітувати зміну в хмарній консолі» -> відправка команди в MockCloudControl")
+                _events.send(ActuatorEvent.ShowMessage("Відправлено команду в хмарну консоль..."))
+                _state.update { it.copy(remoteLedOn = false) }
+                applyFlashlightHardware()
+                MockCloudControl.sendRemoteWashCommand()
             }
         }
     }
@@ -77,10 +111,14 @@ class ActuatorViewModel(app: Application) : AndroidViewModel(app) {
         if (pollJob != null) return
         pollJob = viewModelScope.launch {
             while (isActive) {
-                val remoteOn = MockCloudControl.fetchCommand()
-                if (remoteOn != _state.value.remoteLedOn) {
-                    _state.update { it.copy(remoteLedOn = remoteOn) }
+                val commandId = MockCloudControl.fetchWashCommand()
+                if (commandId > 0 && commandId != lastHandledCommandId) {
+                    lastHandledCommandId = commandId
+                    Log.i("ActuatorViewModel", "Long Polling (MockCloudControl): виявлено дистанційну команду ($commandId) -> запускаємо таймер миття рук")
+                    _events.send(ActuatorEvent.ShowMessage("Хмара: дистанційний запуск таймера миття рук!"))
+                    _state.update { it.copy(remoteLedOn = false) }
                     applyFlashlightHardware()
+                    washViewModel?.onAction(WashAction.RemoteStart)
                 }
                 delay(ActuatorThresholds.POLL_INTERVAL_MS)
             }
@@ -92,6 +130,18 @@ class ActuatorViewModel(app: Application) : AndroidViewModel(app) {
         pollJob = null
     }
 
+    /** Автоматична реакція після завершення таймера 20 секунд: вібрація + ліхтарик + Logcat. */
+    private fun onWashCompleted() {
+        Log.i("ActuatorViewModel", "=== ТАЙМЕР ЗАВЕРШЕНО (WashPhase.DONE): час вийшов, руки помиті! ===")
+        Log.i("ActuatorViewModel", "Автоматично вмикаємо вібрацію та ліхтарик через SmartActuator")
+        _state.update { it.copy(remoteLedOn = true) }
+        actuator.triggerAlarm()
+        applyFlashlightHardware()
+        viewModelScope.launch {
+            _events.send(ActuatorEvent.ShowMessage("Час вийшов, руки помиті! Ліхтарик і вібрація активні"))
+        }
+    }
+
     /** Фізичний ліхтарик — один апаратний ресурс, тому поєднуємо всі джерела команди. */
     private fun applyFlashlightHardware() {
         val s = _state.value
@@ -100,6 +150,6 @@ class ActuatorViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun allOff() {
         actuator.toggleFlashlight(false)
-        _state.update { it.copy(isAlarmActive = false) }
+        _state.update { it.copy(isAlarmActive = false, remoteLedOn = false) }
     }
 }

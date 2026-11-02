@@ -1,11 +1,14 @@
 package com.example.myapplication.actuator
 
+import com.example.myapplication.wash.WashPhase
+
 /** State — усе, що зараз видно на екрані "Manual Control". */
 data class ActuatorState(
     val intensity: Float = 0f,
     val isAlarmActive: Boolean = false,      // локальна автоматична реакція (поріг з DecisionEngine)
     val manualFlashlightOn: Boolean = false, // ручне керування з панелі
-    val remoteLedOn: Boolean = false         // стан, отриманий дистанційно через Long Polling
+    val remoteLedOn: Boolean = false,        // стан ліхтарика після хмарної команди або завершення таймера
+    val washPhase: WashPhase = WashPhase.IDLE // стан таймера миття рук з WashViewModel
 )
 
 /** Action — усі дії користувача (або життєвого циклу) на цьому екрані. */

@@ -24,8 +24,8 @@ data class WashSnapshot(
 
 /**
  * Чиста логіка без залежностей від Android — легко тестується окремо.
- * Один різкий поштовх (перетин порогу знизу вгору) активує таймер,
- * далі він рахується за годинником незалежно від подальшого руху.
+ * Один різкий поштовх (перетин порогу знизу вгору) або дистанційна команда
+ * активує таймер, далі він рахується за годинником (20 секунд).
  */
 class HandWashEngine {
     private val gravity = FloatArray(3)
@@ -33,8 +33,19 @@ class HandWashEngine {
     private var phase = WashPhase.IDLE
     private var wasAbove = false
     private var startMs = 0L
+    private var lastX = 0f
+    private var lastY = 0f
+    private var lastZ = 0f
+    private var lastIntensity = 0f
+
+    /** Дистанційний запуск таймера миття рук (з хмари). */
+    fun start(nowMs: Long) {
+        phase = WashPhase.WASHING
+        startMs = nowMs
+    }
 
     fun onSample(x: Float, y: Float, z: Float, nowMs: Long): WashSnapshot {
+        lastX = x; lastY = y; lastZ = z
         if (!initialized) {
             gravity[0] = x; gravity[1] = y; gravity[2] = z; initialized = true
         }
@@ -44,6 +55,7 @@ class HandWashEngine {
         gravity[2] = a * gravity[2] + (1 - a) * z
         val lx = x - gravity[0]; val ly = y - gravity[1]; val lz = z - gravity[2]
         val intensity = sqrt(lx * lx + ly * ly + lz * lz)
+        lastIntensity = intensity
         val above = intensity > WashThresholds.ACTIVE_ACCEL
 
         if (phase == WashPhase.IDLE && above && !wasAbove) {
@@ -58,6 +70,16 @@ class HandWashEngine {
             if (washed >= WashThresholds.TARGET_WASH_MS) phase = WashPhase.DONE
         }
         return WashSnapshot(phase, x, y, z, intensity, washed)
+    }
+
+    /** Оновлення таймера без сенсорного семплу (для плавного відліку 20 с). */
+    fun tick(nowMs: Long): WashSnapshot {
+        var washed = 0L
+        if (phase != WashPhase.IDLE) {
+            washed = min(nowMs - startMs, WashThresholds.TARGET_WASH_MS)
+            if (washed >= WashThresholds.TARGET_WASH_MS) phase = WashPhase.DONE
+        }
+        return WashSnapshot(phase, lastX, lastY, lastZ, lastIntensity, washed)
     }
 
     fun reset() {

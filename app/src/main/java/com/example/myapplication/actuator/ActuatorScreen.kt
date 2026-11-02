@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myapplication.wash.WashPhase
 
 @Composable
 fun ActuatorScreen(vm: ActuatorViewModel) {
@@ -66,9 +67,19 @@ fun ActuatorContent(state: ActuatorState, onAction: (ActuatorAction) -> Unit) {
 
         // Б. Дистанційне керування (Cloud-to-Device, Long Polling)
         Text("Дистанційне керування (хмара)")
+        val remoteLabel = when (state.washPhase) {
+            WashPhase.IDLE -> if (state.remoteLedOn) "LED: увімкнено" else "LED: вимкнено (очікування команди)"
+            WashPhase.WASHING -> "Хмарна команда: триває миття рук (20 с)..."
+            WashPhase.DONE -> "Час вийшов, руки помиті! (LED + вібрація)"
+        }
+        val remoteColor = when (state.washPhase) {
+            WashPhase.IDLE -> if (state.remoteLedOn) Color(0xFF43A047) else Color.Gray
+            WashPhase.WASHING -> Color(0xFF1E88E5)
+            WashPhase.DONE -> Color(0xFF43A047)
+        }
         StatusRow(
-            label = if (state.remoteLedOn) "LED: увімкнено з хмари" else "LED: вимкнено",
-            color = if (state.remoteLedOn) Color(0xFF43A047) else Color.Gray
+            label = remoteLabel,
+            color = remoteColor
         )
         Button(onClick = { onAction(ActuatorAction.SimulateCloudToggle) }) {
             Text("Імітувати зміну в хмарній консолі")

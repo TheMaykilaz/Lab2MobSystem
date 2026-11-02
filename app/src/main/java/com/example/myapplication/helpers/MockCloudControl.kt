@@ -17,13 +17,31 @@ import kotlinx.coroutines.flow.asStateFlow
  * так само як реальний клієнт дізнався б про зміну значення в консолі Firebase.
  */
 object MockCloudControl {
+    private val _washCommandId = MutableStateFlow(0L)
+    val washCommandId: StateFlow<Long> = _washCommandId.asStateFlow()
+
     private val _ledCommand = MutableStateFlow(false)
     val ledCommand: StateFlow<Boolean> = _ledCommand.asStateFlow()
+
+    /** Імітує запис у хмару (натискання кнопки "Імітувати зміну в хмарній консолі"). */
+    suspend fun sendRemoteWashCommand() {
+        delay(300) // мережева затримка запису
+        _washCommandId.value = System.currentTimeMillis()
+    }
 
     /** Імітує запис у хмару (зміну значення на "консолі"). */
     suspend fun setRemoteCommand(on: Boolean) {
         delay(300) // мережева затримка запису
         _ledCommand.value = on
+        if (on) {
+            _washCommandId.value = System.currentTimeMillis()
+        }
+    }
+
+    /** Імітує один GET-запит у циклі Long Polling для команди миття рук. */
+    suspend fun fetchWashCommand(): Long {
+        delay(200) // мережева затримка читання
+        return _washCommandId.value
     }
 
     /** Імітує один GET-запит у циклі Long Polling. */

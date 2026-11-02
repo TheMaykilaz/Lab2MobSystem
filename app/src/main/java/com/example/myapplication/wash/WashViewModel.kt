@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -32,6 +33,7 @@ class WashViewModel(app: Application) : AndroidViewModel(app) {
     val events = _events.receiveAsFlow()
 
     private var sensorJob: Job? = null
+    private var countdownJob: Job? = null
     private var lastSyncAt = 0L
     private var lastSyncedIntensity = 0f
 
@@ -41,9 +43,23 @@ class WashViewModel(app: Application) : AndroidViewModel(app) {
             WashAction.Start -> startSensor()
             WashAction.Stop -> stopSensor()
             WashAction.ResetClick -> {
+                stopCountdown()
                 engine.reset()
                 lastSyncAt = 0; lastSyncedIntensity = 0f
                 _state.update { WashState() }
+            }
+            WashAction.RemoteStart -> {
+                stopCountdown()
+                engine.reset()
+                val now = SystemClock.elapsedRealtime()
+                engine.start(now)
+                _state.update {
+                    it.copy(
+                        phase = WashPhase.WASHING,
+                        washedMs = 0L
+                    )
+                }
+                startCountdown()
             }
         }
     }
@@ -52,6 +68,7 @@ class WashViewModel(app: Application) : AndroidViewModel(app) {
         if (sensorJob != null) return
         sensorJob = viewModelScope.launch {
             sensorReader.readings().collect { v ->
+                val wasIdle = _state.value.phase == WashPhase.IDLE
                 val snap = engine.onSample(v[0], v[1], v[2], SystemClock.elapsedRealtime())
                 _state.update {
                     it.copy(
@@ -59,9 +76,36 @@ class WashViewModel(app: Application) : AndroidViewModel(app) {
                         intensity = snap.intensity, washedMs = snap.washedMs
                     )
                 }
+                if (wasIdle && snap.phase == WashPhase.WASHING) {
+                    startCountdown()
+                }
                 maybeSync(snap)
             }
         }
+    }
+
+    private fun startCountdown() {
+        countdownJob?.cancel()
+        countdownJob = viewModelScope.launch {
+            while (isActive && _state.value.phase == WashPhase.WASHING) {
+                kotlinx.coroutines.delay(100L)
+                val snap = engine.tick(SystemClock.elapsedRealtime())
+                _state.update {
+                    it.copy(
+                        phase = snap.phase,
+                        washedMs = snap.washedMs
+                    )
+                }
+                if (snap.phase == WashPhase.DONE) {
+                    break
+                }
+            }
+        }
+    }
+
+    private fun stopCountdown() {
+        countdownJob?.cancel()
+        countdownJob = null
     }
 
     private fun stopSensor() {

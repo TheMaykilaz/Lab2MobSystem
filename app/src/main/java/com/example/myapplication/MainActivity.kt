@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        actuatorVm.attachWashViewModel(washVm)
         setContent { MaterialTheme { AppRoot(washVm, bleVm, actuatorVm) } }
     }
 

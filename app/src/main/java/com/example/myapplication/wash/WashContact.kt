@@ -19,6 +19,7 @@ sealed interface WashAction {
     data object Start : WashAction       // onResume
     data object Stop : WashAction        // onPause
     data object ResetClick : WashAction
+    data object RemoteStart : WashAction // Дистанційний запуск таймера з хмари
 }
 
 /** Event — разові повідомлення від ViewModel до екрана (Toast/Snackbar). */
